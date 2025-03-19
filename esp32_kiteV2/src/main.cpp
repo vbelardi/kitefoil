@@ -43,28 +43,34 @@ Adafruit_GPS GPS(&GPSSerial);
 uint32_t timer = millis();
 
 // Définir les broches pour chaque HX711
-const int32_t CALIBRATION = 34;
+const int32_t CALIBRATION = 13;
 
+// Arrière gauche
 const uint8_t DATA_PIN1 = 25;
 const uint8_t CLOCK_PIN1 = 26;
 
+// Arrière droit
 const uint8_t DATA_PIN2 = 13;
 const uint8_t CLOCK_PIN2 = 12;
 
+//Arrière centre
 const uint8_t DATA_PIN3 = 27;
 const uint8_t CLOCK_PIN3 = 14;
 
+//Avant Gauche
 const uint8_t DATA_PIN4 = 36;
 const uint8_t CLOCK_PIN4 = 15;
 
+//Avant Centre
 const uint8_t DATA_PIN5 = 4;
 const uint8_t CLOCK_PIN5 = 0;
 
+//Avant Droit
 const uint8_t DATA_PIN6 = 32;
 const uint8_t CLOCK_PIN6 = 2;
 
 // Instances des modules HX711
-Adafruit_HX711 hx711_1(DATA_PIN1, CLOCK_PIN1);
+Adafruit_HX711 hx711_1(DATA_PIN1, CLOCK_PIN1);  
 Adafruit_HX711 hx711_2(DATA_PIN2, CLOCK_PIN2);
 Adafruit_HX711 hx711_3(DATA_PIN3, CLOCK_PIN3);
 Adafruit_HX711 hx711_4(DATA_PIN4, CLOCK_PIN4);
@@ -73,9 +79,10 @@ Adafruit_HX711 hx711_6(DATA_PIN6, CLOCK_PIN6);
 
 
 // State variables
-bool switchState = 0;         // Stores the toggled state (0 or 1)
-bool lastSwitchReading = 1;   // Last physical state (1 = not pressed, 0 = pressed)
-
+bool switchState = false;    
+bool lastSwitchReading = true;  
+bool loggingActive = false;  
+unsigned long lastBeepTime = 0;
 
 // Function to List Files on SD Card
 String listFiles(fs::FS &fs, const char* dirname) {
@@ -182,6 +189,21 @@ void setupGPS() {
   Serial.println("GPS initialized.");
 }
 
+void createNewLogFile() {
+  int fileIndex = 0;
+  do {
+    sprintf(currentFileName, "/%s%04d.bin", filePrefix, fileIndex++);
+  } while (SD.exists(currentFileName));
+
+  dataFile = SD.open(currentFileName, FILE_WRITE);
+  if (dataFile) {
+    Serial.print("Created new log file: ");
+    Serial.println(currentFileName);
+  } else {
+    Serial.println("Failed to create log file!");
+  }
+}
+
 void setupLoadCells() {
   // Initialisation de chaque HX711
   hx711_1.begin();
@@ -267,7 +289,9 @@ void logIMUData() {
 
   // Prepare data buffer
   struct {
+    unsigned long cpu_timestamp;
     char timestamp[24];
+    float latitude, longitude;
     float euler_x, euler_y, euler_z;
     float gyro_x, gyro_y, gyro_z;
     float accel_x, accel_y, accel_z;
@@ -279,11 +303,21 @@ void logIMUData() {
     int32_t weight6;
   } imuData;
 
+  imuData.cpu_timestamp = millis();
+
   String gpsTimestamp = getGPSTimestamp();
   if (!gpsTimestamp.isEmpty()) {
     strncpy(imuData.timestamp, gpsTimestamp.c_str(), sizeof(imuData.timestamp));
   } else {
     strncpy(imuData.timestamp, "No timestamp", sizeof(imuData.timestamp));
+  }
+
+  if (GPS.fix) {
+    imuData.latitude = GPS.latitude;
+    imuData.longitude = GPS.longitude;
+  } else {
+    imuData.latitude = 0.0;
+    imuData.longitude = 0.0;
   }
 
   imuData.euler_x = orientationData.orientation.x;
@@ -328,6 +362,16 @@ void logIMUData() {
   if (dataFile) {
     dataFile.write((uint8_t*)&imuData, sizeof(imuData));
     dataFile.flush(); // Ensure data is written
+  }
+}
+
+void checkGPSFix() {
+  static unsigned long lastBeepTime = 0;
+  unsigned long currentTime = millis();
+
+  if (!GPS.fix && (currentTime - lastBeepTime >= 2000)) { // Bip long toutes les 2s si pas de fix
+    lastBeepTime = currentTime;
+    tone(BUZZZER_PIN, NOTE_C4, 500);
   }
 }
 
@@ -404,29 +448,38 @@ void setup() {
 
   pinMode(SWITCH_PIN, INPUT);
 
-  Serial.println("Setup finished");  
-  // while(42);
+  Serial.println("Setup finished"); 
 }
-
 
 
 void loop() {
   static unsigned long lastLogTime = 0;
   unsigned long currentTime = millis();
-  bool currentState = readToggleSwitch(SWITCH_PIN);  // Call function
+  bool currentState = readToggleSwitch(SWITCH_PIN);
 
-  //Serial.print("Toggled State: ");
-  //Serial.println(currentState);
-  if (currentState == 1){
-    if (currentTime - lastLogTime >= 100) { // 100ms = 10Hz
+  if (currentState) {
+    if (!loggingActive) {
+      loggingActive = true;
+      createNewLogFile();
+    }
+    
+    if (currentTime - lastLogTime >= 100) {
       lastLogTime = currentTime;
-
-      // Log IMU Data
       logIMUData();
+    }
+
+    if (currentTime - lastBeepTime >= 5000) {
+      lastBeepTime = currentTime;
+      tone(BUZZZER_PIN, NOTE_C4, 200);
+    }
+  } else {
+    if (loggingActive) {
+      loggingActive = false;
+      if (dataFile) dataFile.close();
     }
   }
 
-  // Handle HTTP Requests (does not block the loop)
+  checkGPSFix();
+
   server.handleClient();
 }
-
