@@ -45,11 +45,11 @@ uint32_t timer = millis();
 // Définir les broches pour chaque HX711
 const int32_t CALIBRATION = 13;
 
-// Arrière gauche
+// Arrière droit
 const uint8_t DATA_PIN1 = 25;
 const uint8_t CLOCK_PIN1 = 26;
 
-// Arrière droit
+// Arrière gauche
 const uint8_t DATA_PIN2 = 13;
 const uint8_t CLOCK_PIN2 = 12;
 
@@ -57,15 +57,15 @@ const uint8_t CLOCK_PIN2 = 12;
 const uint8_t DATA_PIN3 = 27;
 const uint8_t CLOCK_PIN3 = 14;
 
-//Avant Gauche
+//Avant Centre
 const uint8_t DATA_PIN4 = 36;
 const uint8_t CLOCK_PIN4 = 15;
 
-//Avant Centre
+//Avant Droit
 const uint8_t DATA_PIN5 = 4;
 const uint8_t CLOCK_PIN5 = 0;
 
-//Avant Droit
+//Avant Gauche
 const uint8_t DATA_PIN6 = 32;
 const uint8_t CLOCK_PIN6 = 2;
 
@@ -216,7 +216,7 @@ void setupLoadCells() {
   // Tare pour chaque module
   Serial.println("Tare des modules HX711...");
   
-  for (uint8_t t = 0; t < 3; t++) {
+  for (uint8_t t = 0; t < 5; t++) {
     hx711_1.tareA(hx711_1.readChannelRaw(CHAN_A_GAIN_64));
     hx711_2.tareA(hx711_2.readChannelRaw(CHAN_A_GAIN_64));
     hx711_3.tareA(hx711_3.readChannelRaw(CHAN_A_GAIN_64));

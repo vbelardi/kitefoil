@@ -54,6 +54,6 @@ def binary_to_csv(binary_file, csv_file):
     print(f"Conversion terminée. Données enregistrées dans {csv_file}")
 
 # Exemple d'utilisation
-binary_file_path = "_imu_log_0005.bin"  # Remplace par le chemin réel du fichier binaire
-csv_file_path = "imu_log_0005.csv"     # Remplace par le chemin souhaité du fichier CSV
+binary_file_path = "_imu_log_0008.bin"  # Remplace par le chemin réel du fichier binaire
+csv_file_path = "imu_log_0008.csv"     # Remplace par le chemin souhaité du fichier CSV
 binary_to_csv(binary_file_path, csv_file_path)
