@@ -46,9 +46,9 @@ As there is no feedback on the voltage level of the battery, recharge until full
 
 The right and left are defined when you are standing at the back of the board (i.e. at the opposite of the board from the Vakaros GPS).
 
-Loadcell 1 : Back right 
-Loadcell 2 : Back left
-Loadcell 3 : Back Center
-Loadcell 4 : Front Center
-Loadcell 5 : Front Right
-Loadcell 6 : Front Left
+- Loadcell 1 : Back right 
+- Loadcell 2 : Back left
+- Loadcell 3 : Back Center
+- Loadcell 4 : Front Center
+- Loadcell 5 : Front Right
+- Loadcell 6 : Front Left
