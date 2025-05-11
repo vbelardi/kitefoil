@@ -8,81 +8,19 @@
 #include <Adafruit_GPS.h>
 #include <Arduino.h>
 #include "Adafruit_HX711.h"
+#include <MCP23017.h>
 
 #include "pitches.h"
-#define BUZZZER_PIN  33 // ESP32 pin GPIO18 connected to piezo buzzer
-#define SWITCH_PIN 39  // GPIO39 (VN)
 
-int melody[] = {
-  NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
-};
+#include "main.h"
 
-int noteDurations[] = {
-  4, 8, 8, 4, 4, 4, 4, 4
-};
+volatile unsigned long last_pps = 0;
 
-// Wi-Fi Configuration
-const char* ssid = "Kite"; // Wi-Fi name
-const char* password = "12345678"; // Wi-Fi password
+# define WIFI_ON true
 
-// HTTP Server
-WebServer server(80);
-
-// SD Card
-File dataFile;
-const char* filePrefix = "imu_log_";
-char currentFileName[16];
-
-// IMU Sensor
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
-
-// GPS
-#define GPSSerial Serial2
-Adafruit_GPS GPS(&GPSSerial);
-#define GPSECHO false
-uint32_t timer = millis();
-
-// Définir les broches pour chaque HX711
-const int32_t CALIBRATION = 13;
-
-// Arrière droit
-const uint8_t DATA_PIN1 = 25;
-const uint8_t CLOCK_PIN1 = 26;
-
-// Arrière gauche
-const uint8_t DATA_PIN2 = 13;
-const uint8_t CLOCK_PIN2 = 12;
-
-//Arrière centre
-const uint8_t DATA_PIN3 = 27;
-const uint8_t CLOCK_PIN3 = 14;
-
-//Avant Centre
-const uint8_t DATA_PIN4 = 36;
-const uint8_t CLOCK_PIN4 = 15;
-
-//Avant Droit
-const uint8_t DATA_PIN5 = 4;
-const uint8_t CLOCK_PIN5 = 0;
-
-//Avant Gauche
-const uint8_t DATA_PIN6 = 32;
-const uint8_t CLOCK_PIN6 = 2;
-
-// Instances des modules HX711
-Adafruit_HX711 hx711_1(DATA_PIN1, CLOCK_PIN1);  
-Adafruit_HX711 hx711_2(DATA_PIN2, CLOCK_PIN2);
-Adafruit_HX711 hx711_3(DATA_PIN3, CLOCK_PIN3);
-Adafruit_HX711 hx711_4(DATA_PIN4, CLOCK_PIN4);
-Adafruit_HX711 hx711_5(DATA_PIN5, CLOCK_PIN5);
-Adafruit_HX711 hx711_6(DATA_PIN6, CLOCK_PIN6);
-
-
-// State variables
-bool switchState = false;    
-bool lastSwitchReading = true;  
-bool loggingActive = false;  
-unsigned long lastBeepTime = 0;
+void PPS_int(){
+  last_pps = millis();
+}
 
 // Function to List Files on SD Card
 String listFiles(fs::FS &fs, const char* dirname) {
@@ -109,6 +47,27 @@ String listFiles(fs::FS &fs, const char* dirname) {
 // HTTP Handlers
 void handleRoot() {
   String html = listFiles(SD, "/");
+
+  // Append IMU data section
+  html += "<h2>IMU Data</h2>";
+  html += "<pre id=\"imuData\">Loading...</pre>";
+  html += R"rawliteral(
+    <script>
+      async function fetchIMUData() {
+        try {
+          const response = await fetch('/imu_data');
+          const data = await response.json();
+          document.getElementById('imuData').innerText = JSON.stringify(data, null, 2);
+        } catch (error) {
+          console.error('Error fetching IMU data:', error);
+        }
+      }
+
+      setInterval(fetchIMUData, 500); // Fetch data every 0.5 seconds
+      window.onload = fetchIMUData; // Fetch data on page load
+    </script>
+  )rawliteral";
+
   server.send(200, "text/html", html);
 }
 
@@ -164,6 +123,34 @@ void handleDeleteAll() {
   server.send(303);
 }
 
+void handleIMUData() {
+  // Prepare JSON response
+  String json = "{";
+  json += "\"cpu_timestamp\":" + String(imuData.cpu_timestamp) + ",";
+  json += "\"timestamp\":\"" + String(imuData.timestamp) + "\",";
+  json += "\"PPS\":\"" + String(last_pps) + "\",";
+  json += "\"latitude\":" + String(imuData.latitude, 6) + ",";
+  json += "\"longitude\":" + String(imuData.longitude, 6) + ",";
+  json += "\"euler_x\":" + String(imuData.euler_x, 2) + ",";
+  json += "\"euler_y\":" + String(imuData.euler_y, 2) + ",";
+  json += "\"euler_z\":" + String(imuData.euler_z, 2) + ",";
+  json += "\"gyro_x\":" + String(imuData.gyro_x, 2) + ",";
+  json += "\"gyro_y\":" + String(imuData.gyro_y, 2) + ",";
+  json += "\"gyro_z\":" + String(imuData.gyro_z, 2) + ",";
+  json += "\"accel_x\":" + String(imuData.accel_x, 2) + ",";
+  json += "\"accel_y\":" + String(imuData.accel_y, 2) + ",";
+  json += "\"accel_z\":" + String(imuData.accel_z, 2) + ",";
+  json += "\"weight1\":" + String(imuData.weight1) + ",";
+  json += "\"weight2\":" + String(imuData.weight2) + ",";
+  json += "\"weight3\":" + String(imuData.weight3) + ",";
+  json += "\"weight4\":" + String(imuData.weight4) + ",";
+  json += "\"weight5\":" + String(imuData.weight5) + ",";
+  json += "\"weight6\":" + String(imuData.weight6);
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
 
 void setupServer() {
   Serial.println("Setting up HTTP server...");
@@ -171,6 +158,7 @@ void setupServer() {
   server.on("/download", handleDownload);
   server.on("/delete", handleDelete);
   server.on("/delete_all", handleDeleteAll);
+  server.on("/imu_data", handleIMUData);
 
   Serial.println("Starting server...");
   server.begin();
@@ -181,12 +169,21 @@ void setupServer() {
 // Initialize GPS
 void setupGPS() {
 
-  GPS.begin(9600);
-  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
-  GPS.sendCommand(PGCMD_ANTENNA);
+  // GPS.begin(9600);
+  GPS_Serial.begin(GPSBaud);
+  // 
+  // GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  // // GPS.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+  // GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+  // // GPS.sendCommand(PGCMD_ANTENNA);
+  // GPS.sendCommand(PMTK_SET_BAUD_9600);
+  // // to get data updated at 5 Hz
+  // GPS.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+
+
   delay(1000);
   Serial.println("GPS initialized.");
+
 }
 
 void createNewLogFile() {
@@ -228,43 +225,75 @@ void setupLoadCells() {
   Serial.println("Tare terminée !");
 }
 
+
 // Update GPS timestamp
 String getGPSTimestamp() {
-  // read data from the GPS in the 'main loop'
-  char c = GPS.read();
-  // if you want to debug, this is a good time to do it!
-  if (GPSECHO)
-    if (c) Serial.print(c);
-  // if a sentence is received, we can check the checksum, parse it...
-  if (GPS.newNMEAreceived()) {
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences!
-    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    //Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
-      return ""; // we can fail to parse a sentence in which case we should just wait for another
-  }
+  static unsigned long last_GPS_print = millis();
+
+  while (GPS_Serial.available())
+      gps.encode(GPS_Serial.read());
+
+
+  // // read data from the GPS in the 'main loop'
+  // char c = GPS.read();
+  // // if you want to debug, this is a good time to do it!
+  // if (GPSECHO)
+  //   if (c) Serial.print(c);
+  // // if a sentence is received, we can check the checksum, parse it...
+  // if (GPS.newNMEAreceived()) {
+  //   // a tricky thing here is if we print the NMEA sentence, or data
+  //   // we end up not listening and catching other sentences!
+  //   // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+  //   //Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+  //   if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+  //     return ""; // we can fail to parse a sentence in which case we should just wait for another
+  // }
   
+  // char timestamp[24];
+  // sprintf(timestamp, "20%02d-%02d-%02d %02d:%02d:%02d.%03d",
+  //         GPS.year, GPS.month, GPS.day,
+  //         GPS.hour, GPS.minute, GPS.seconds,
+  //         GPS.milliseconds);
+
+  
+
+  
+    if (millis() - 1000 > last_GPS_print ){
+      // Serial.print("Location: ");
+      // Serial.print(GPS.latitude, 2); Serial.print(GPS.lat);
+      // Serial.print(", ");
+      // Serial.print(GPS.longitude, 2); Serial.println(GPS.lon);
+      // Serial.print("Speed (knots): "); Serial.println(GPS.speed);
+      // Serial.print("Angle: "); Serial.println(GPS.angle);
+      // Serial.print("Altitude: "); Serial.println(GPS.altitude);
+      // Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
+      // Serial.print("Antenna status: "); Serial.println((int)GPS.antenna);
+
+      char sz[32];
+      sprintf(sz, "%02d/%02d/%02d ", gps.date.month(), gps.date.day(), gps.date.year());
+      Serial.print("Date : ");
+      Serial.println(sz);
+
+      char sz1[32];
+      sprintf(sz1, "%02d:%02d:%02d ", gps.time.hour(), gps.time.minute(), gps.time.second());
+      Serial.print("Time : ");
+      Serial.println(sz1);
+
+      Serial.print(gps.location.lat(), 2); Serial.println(gps.location.lng());
+
+      last_GPS_print = millis();
+    }
+
   char timestamp[24];
   sprintf(timestamp, "20%02d-%02d-%02d %02d:%02d:%02d.%03d",
-          GPS.year, GPS.month, GPS.day,
-          GPS.hour, GPS.minute, GPS.seconds,
-          GPS.milliseconds);
+          gps.date.year(),
+          gps.date.month(), gps.date.day(), 
+          gps.time.hour(), gps.time.minute(), gps.time.second(),
+          gps.time.centisecond());
+ 
 
   return String(timestamp);
-  /*
-  if (GPS.fix) {
-    Serial.print("Location: ");
-    Serial.print(GPS.latitude, 2); Serial.print(GPS.lat);
-    Serial.print(", ");
-    Serial.print(GPS.longitude, 2); Serial.println(GPS.lon);
-    Serial.print("Speed (knots): "); Serial.println(GPS.speed);
-    Serial.print("Angle: "); Serial.println(GPS.angle);
-    Serial.print("Altitude: "); Serial.println(GPS.altitude);
-    Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
-    Serial.print("Antenna status: "); Serial.println((int)GPS.antenna);
-  }
-  */
+
 }
 
 
@@ -285,24 +314,6 @@ void logIMUData() {
   int32_t weight5 = hx711_5.readChannelBlocking(CHAN_A_GAIN_64)/CALIBRATION;
   int32_t weight6 = hx711_6.readChannelBlocking(CHAN_A_GAIN_64)/CALIBRATION;
 
-
-
-  // Prepare data buffer
-  struct {
-    unsigned long cpu_timestamp;
-    char timestamp[24];
-    float latitude, longitude;
-    float euler_x, euler_y, euler_z;
-    float gyro_x, gyro_y, gyro_z;
-    float accel_x, accel_y, accel_z;
-    int32_t weight1;
-    int32_t weight2;
-    int32_t weight3;
-    int32_t weight4;
-    int32_t weight5;
-    int32_t weight6;
-  } imuData;
-
   imuData.cpu_timestamp = millis();
 
   String gpsTimestamp = getGPSTimestamp();
@@ -312,13 +323,15 @@ void logIMUData() {
     strncpy(imuData.timestamp, "No timestamp", sizeof(imuData.timestamp));
   }
 
-  if (GPS.fix) {
-    imuData.latitude = GPS.latitude;
-    imuData.longitude = GPS.longitude;
-  } else {
-    imuData.latitude = 0.0;
-    imuData.longitude = 0.0;
-  }
+  // ! need to add gps pos still
+
+  // if (GPS.fix) {
+  //   imuData.latitude = GPS.latitude;
+  //   imuData.longitude = GPS.longitude;
+  // } else {
+  //   imuData.latitude = 0.0;
+  //   imuData.longitude = 0.0;
+  // }
 
   imuData.euler_x = orientationData.orientation.x;
   imuData.euler_y = orientationData.orientation.y;
@@ -337,18 +350,18 @@ void logIMUData() {
   imuData.weight5 = weight5;
   imuData.weight6 = weight6;
   
-  Serial.print("Value loadcell 1 : ");
-  Serial.println(weight1);
-  Serial.print("Value loadcell 2 : ");
-  Serial.println(weight2);
-  Serial.print("Value loadcell 3 : ");
-  Serial.println(weight3);
-  Serial.print("Value loadcell 4 : ");
-  Serial.println(weight4);
-  Serial.print("Value loadcell 5 : ");
-  Serial.println(weight5);
-  Serial.print("Value loadcell 6 : ");
-  Serial.println(imuData.weight6);
+  // Serial.print("Value loadcell 1 : ");
+  // Serial.println(weight1);
+  // Serial.print("Value loadcell 2 : ");
+  // Serial.println(weight2);
+  // Serial.print("Value loadcell 3 : ");
+  // Serial.println(weight3);
+  // Serial.print("Value loadcell 4 : ");
+  // Serial.println(weight4);
+  // Serial.print("Value loadcell 5 : ");
+  // Serial.println(weight5);
+  // Serial.print("Value loadcell 6 : ");
+  // Serial.println(imuData.weight6);
   // Serial.print("GPS : ");
   // Serial.println(imuData.timestamp);
   // Serial.print("IMU x: ");
@@ -369,25 +382,54 @@ void checkGPSFix() {
   static unsigned long lastBeepTime = 0;
   unsigned long currentTime = millis();
 
-  if (!GPS.fix && (currentTime - lastBeepTime >= 2000)) { // Bip long toutes les 2s si pas de fix
-    lastBeepTime = currentTime;
-    tone(BUZZZER_PIN, NOTE_C4, 500);
-  }
+  // if (!GPS.fix && (currentTime - lastBeepTime >= 2000)) { // Bip long toutes les 2s si pas de fix
+  //   lastBeepTime = currentTime;
+  //   tone(BUZZZER_PIN, NOTE_C4, 500);
+  // }
 }
 
 bool readToggleSwitch(int pin) {
-  int currentReading = digitalRead(pin); // Read the physical switch state
+  static bool switchState = false;    
+  static bool lastSwitchReading = true; 
+  static bool already_changed = false; 
+  static unsigned long last_switch_time = millis();
 
+  int currentReading = digitalRead(pin); // Read the physical switch state
+  
   if (lastSwitchReading == 1 && currentReading == 0) {
-    switchState = !switchState;  // Toggle state (0 → 1 or 1 → 0)
+    last_switch_time = millis();
+    already_changed = false;
+    //Serial.println("Last switchtime reset");
+  }
+  // when button is pressed, it has to be stayed pressed for a bit
+  if (currentReading == 0 && (millis() - 500 > last_switch_time)){
+    // avoid that when being pressed it continues to change
+    if (already_changed == false){
+      switchState = !switchState;  // Toggle state (0 → 1 or 1 → 0)
+      already_changed = true;
+      //Serial.println("Switched logging state");
+    } 
   }
 
   lastSwitchReading = currentReading; // Save last reading
   return switchState;  // Return the toggled state
 }
 
+
+void toogle_leds(){
+  // read state of led pins
+  // write the oposite
+  mcp.digitalWrite(LOGGING_LED, !mcp.digitalRead(LOGGING_LED));
+  mcp.digitalWrite(STATUS_LED, !mcp.digitalRead(STATUS_LED));
+}
+
+
+// * -------------------- SETUP and LOOP --------------------
+
 void setup() {
   Serial.begin(115200);
+  // GPS Serial
+  Serial2.begin(9600);
 
   for (int thisNote = 0; thisNote < 8; thisNote++) {
     int noteDuration = 1000 / noteDurations[thisNote];
@@ -433,24 +475,38 @@ void setup() {
   // Initialize GPS
   setupGPS();
 
+  // add PPS interupt
+  attachInterrupt(GPS_PPS, PPS_int, RISING);
+
   setupLoadCells();
 
-  // Start Wi-Fi
-  WiFi.softAP(ssid, password);
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("Wi-Fi created: ");
-  Serial.println(ssid);
-  Serial.print("IP: ");
-  Serial.println(IP);
+  
 
   // Setup HTTP Server
-  setupServer();
+  if(WIFI_ON){
+    // Start Wi-Fi
+    WiFi.softAP(ssid, password);
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("Wi-Fi created: ");
+    Serial.println(ssid);
+    Serial.print("IP: ");
+    Serial.println(IP);
+
+
+    setupServer();
+  }
+  
 
   pinMode(SWITCH_PIN, INPUT);
+
+  // setting pin modes for MCP extender
+  mcp.pinMode(STATUS_LED, OUTPUT);
+  mcp.pinMode(LOGGING_LED, OUTPUT);
 
   Serial.println("Setup finished"); 
 }
 
+unsigned long last_led_togle = 0;
 
 void loop() {
   static unsigned long lastLogTime = 0;
@@ -472,14 +528,29 @@ void loop() {
       lastBeepTime = currentTime;
       tone(BUZZZER_PIN, NOTE_C4, 200);
     }
+    // handling the logging led
+    if (currentTime - lastLogLEDTime >= 500) {
+      lastLogLEDTime = currentTime;
+      mcp.digitalWrite(LOGGING_LED, !mcp.digitalRead(LOGGING_LED));
+    }
   } else {
     if (loggingActive) {
       loggingActive = false;
       if (dataFile) dataFile.close();
+      mcp.digitalWrite(LOGGING_LED, 0);
     }
   }
 
-  checkGPSFix();
+  // checkGPSFix();
 
-  server.handleClient();
+  if (WIFI_ON){
+    server.handleClient();
+  }
+  
+
+  // if ((millis() - last_led_togle) > 2000){
+  //   last_led_togle = millis();
+  //   toogle_leds();
+  // }
 }
+
