@@ -63,7 +63,7 @@ void handleRoot() {
         }
       }
 
-      setInterval(fetchIMUData, 500); // Fetch data every 0.5 seconds
+      setInterval(fetchIMUData, 1400); // Fetch data every 0.5 seconds
       window.onload = fetchIMUData; // Fetch data on page load
     </script>
   )rawliteral";
@@ -129,6 +129,7 @@ void handleIMUData() {
   json += "\"cpu_timestamp\":" + String(imuData.cpu_timestamp) + ",";
   json += "\"timestamp\":\"" + String(imuData.timestamp) + "\",";
   json += "\"PPS\":\"" + String(last_pps) + "\",";
+  json += "\"Fix\":\"" + String(gps.location.isValid()) + "\",";
   json += "\"latitude\":" + String(imuData.latitude, 6) + ",";
   json += "\"longitude\":" + String(imuData.longitude, 6) + ",";
   json += "\"euler_x\":" + String(imuData.euler_x, 2) + ",";
@@ -269,23 +270,23 @@ String getGPSTimestamp() {
       // Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
       // Serial.print("Antenna status: "); Serial.println((int)GPS.antenna);
 
-      char sz[32];
-      sprintf(sz, "%02d/%02d/%02d ", gps.date.month(), gps.date.day(), gps.date.year());
-      Serial.print("Date : ");
-      Serial.println(sz);
+      // char sz[32];
+      // sprintf(sz, "%02d/%02d/%04d ", gps.date.month(), gps.date.day(), gps.date.year());
+      // Serial.print("Date : ");
+      // Serial.println(sz);
 
-      char sz1[32];
-      sprintf(sz1, "%02d:%02d:%02d ", gps.time.hour(), gps.time.minute(), gps.time.second());
-      Serial.print("Time : ");
-      Serial.println(sz1);
+      // char sz1[32];
+      // sprintf(sz1, "%02d:%02d:%02d ", gps.time.hour(), gps.time.minute(), gps.time.second());
+      // Serial.print("Time : ");
+      // Serial.println(sz1);
 
-      Serial.print(gps.location.lat(), 2); Serial.println(gps.location.lng());
+      // Serial.print(gps.location.lat(), 2); Serial.println(gps.location.lng());
 
       last_GPS_print = millis();
     }
 
   char timestamp[24];
-  sprintf(timestamp, "20%02d-%02d-%02d %02d:%02d:%02d.%03d",
+  sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d.%02d",
           gps.date.year(),
           gps.date.month(), gps.date.day(), 
           gps.time.hour(), gps.time.minute(), gps.time.second(),
@@ -323,15 +324,18 @@ void logIMUData() {
     strncpy(imuData.timestamp, "No timestamp", sizeof(imuData.timestamp));
   }
 
+  // update from value changed from interrupt
+  imuData.last_pps = last_pps;
+
   // ! need to add gps pos still
 
-  // if (GPS.fix) {
-  //   imuData.latitude = GPS.latitude;
-  //   imuData.longitude = GPS.longitude;
-  // } else {
-  //   imuData.latitude = 0.0;
-  //   imuData.longitude = 0.0;
-  // }
+  if (gps.location.isValid()) {
+    imuData.latitude = gps.location.lat();
+    imuData.longitude = gps.location.lng();
+  } else {
+    imuData.latitude = 0.0;
+    imuData.longitude = 0.0;
+  }
 
   imuData.euler_x = orientationData.orientation.x;
   imuData.euler_y = orientationData.orientation.y;
@@ -362,8 +366,8 @@ void logIMUData() {
   // Serial.println(weight5);
   // Serial.print("Value loadcell 6 : ");
   // Serial.println(imuData.weight6);
-  // Serial.print("GPS : ");
-  // Serial.println(imuData.timestamp);
+  Serial.print("GPS : ");
+  Serial.println(imuData.timestamp);
   // Serial.print("IMU x: ");
   // Serial.print(imuData.euler_x);
   // Serial.print(", y: ");
@@ -431,14 +435,14 @@ void setup() {
   // GPS Serial
   Serial2.begin(9600);
 
-  for (int thisNote = 0; thisNote < 8; thisNote++) {
-    int noteDuration = 1000 / noteDurations[thisNote];
-    tone(BUZZZER_PIN, melody[thisNote], noteDuration);
+  // for (int thisNote = 0; thisNote < 8; thisNote++) {
+  //   int noteDuration = 1000 / noteDurations[thisNote];
+  //   tone(BUZZZER_PIN, melody[thisNote], noteDuration);
 
-    int pauseBetweenNotes = noteDuration * 1.30;
-    delay(pauseBetweenNotes);
-    noTone(BUZZZER_PIN);
-  }
+  //   int pauseBetweenNotes = noteDuration * 1.30;
+  //   delay(pauseBetweenNotes);
+  //   noTone(BUZZZER_PIN);
+  // }
 
 
   // Initialize IMU
@@ -457,6 +461,8 @@ void setup() {
     Serial.println("SD card initialized.");
   }
 
+  
+
   // Create a unique log file
   int fileIndex = 0;
   do {
@@ -468,9 +474,12 @@ void setup() {
     Serial.println("Cannot create file!");
     // while (1);
   } else {
-    Serial.print("Created file: ");
+    Serial.print("First available file: ");
     Serial.println(currentFileName);
+    SD.remove(currentFileName);
   }
+
+  
 
   // Initialize GPS
   setupGPS();
@@ -524,10 +533,10 @@ void loop() {
       logIMUData();
     }
 
-    if (currentTime - lastBeepTime >= 5000) {
-      lastBeepTime = currentTime;
-      tone(BUZZZER_PIN, NOTE_C4, 200);
-    }
+    // if (currentTime - lastBeepTime >= 5000) {
+    //   lastBeepTime = currentTime;
+    //   tone(BUZZZER_PIN, NOTE_C4, 200);
+    // }
     // handling the logging led
     if (currentTime - lastLogLEDTime >= 500) {
       lastLogLEDTime = currentTime;

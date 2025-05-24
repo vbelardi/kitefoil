@@ -107,6 +107,7 @@ Adafruit_HX711 hx711_6(DATA_PIN6, CLOCK_PIN6);
 
 struct {
   unsigned long cpu_timestamp;
+  unsigned long last_pps;
   char timestamp[24];
   float latitude, longitude;
   float euler_x, euler_y, euler_z;
