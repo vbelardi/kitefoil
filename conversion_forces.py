@@ -49,44 +49,72 @@ def process_loadcells(input_csv, output_csv):
     # Calcul des forces totales sur l'avant et l'arrière
     F_front = np.sum(forces[:, 3:6], axis=1)
     F_back = np.sum(forces[:, 0:3], axis=1)
-    # g1 = distance entre l'axe de symetrie de la planche en longueur et les deux loadcell avant non centrées (en mm)
+    # g1 = distance entre l'axe de symetrie de la planche en longueur et les deux loadcell AVANT non centrées (en mm)
     g1 = 139.5
-    # g2 = distance entre l'axe de symetrie de la planche en longueur et les deux loadcell arrières non centrées(en mm)
-    g2 = 106.5
+    # g2 = distance entre l'axe de symetrie de la planche en longueur et les deux loadcell ARRIERE non centrées(en mm)
+    g2 = 106.5  #! pas symetrique en réalité
 
-    # mauvaises valeurs
-    e1 = 276.5
-    e2 = 539
-    e3 = 294
-    e4 = 464
+    # ! mauvaises valeurs
+    e1 = 276.5  # distance entre axe sysmétrie latéral de la planche et loadcell avant gauche/droite
+    e2 = 539  # avant centre
+    e3 = 294  # arrière gauche/droite
+    e4 = 464  # arrière centre
+
+    # les forces par position. Changer ici si l'ordre des loadcells change
+    f_avant_centre = forces[:, 4]
+    f_avant_droite = forces[:, 5]
+    f_avant_gauche = forces[:, 3]
+    f_arriere_centre = forces[:, 2]
+    f_arriere_droite = forces[:, 1]
+    f_arriere_gauche = forces[:, 0]
+
+    # * X is Roll axis, Y is Pitch axis
+    # X positif vers l'avant, Y positif vers la droite
 
     # Calcul du moment total autour de l'axe X et Y
+    # Moment: M = d x F
+    # * Donc positif pour à droite, négatif pour à gauche
+    # M_tot_X = (
+    #     g1 * forces[:, 5] + g2 * forces[:, 1] - g1 * forces[:, 4] - g2 * forces[:, 0]
+    # ) / 1000.0
     M_tot_X = (
-        g1 * forces[:, 5] + g2 * forces[:, 1] - g1 * forces[:, 4] - g2 * forces[:, 0]
+        g1 * f_avant_droite
+        + g2 * f_arriere_droite
+        - g1 * f_avant_gauche
+        - g2 * f_arriere_gauche
     ) / 1000.0
 
-    # mauvaises valeurs
+    # ! mauvaises valeurs
+    # negatif pour l'avant, positif pour l'arrière
     M_tot_Y = (
-        e1 * (forces[:, 1] + forces[:, 2])
-        + e2 * forces[:, 0]
-        - e3 * (forces[:, 4] + forces[:, 5])
-        - e4 * forces[:, 3]
+        -e1 * (f_avant_droite + f_avant_gauche)
+        - e2 * f_avant_centre
+        + e3 * (f_arriere_droite + f_arriere_gauche)
+        + e4 * f_arriere_centre
     ) / 1000.0
+    # M_tot_Y = (
+    #     e1 * (forces[:, 1] + forces[:, 2])
+    #     + e2 * forces[:, 0]
+    #     - e3 * (forces[:, 4] + forces[:, 5])
+    #     - e4 * forces[:, 3]
+    # ) / 1000.0
 
     # Calcul des moments spécifiques pour la partie avant et arrière
-
+    # le point de référence est le point equidistant entre les loadcells droite/gauche et la centrale,
+    # sur l'axe longitudinal de la planche.
+    #! ce n'est pas le même pour l'avant et l'arrière
     # moitié de la distance entre les loadcells avant en longueur
     h1 = 90.8
     # moitié de la distance entre les loadcells arrière en longueur
-    h2 = 48.5
+    h2 = 47.15
 
     # Moments pour la partie avant
-    M_front_X = (g1 * (forces[:, 5] - forces[:, 4])) / 1000.0
-    M_front_Y = h1 * (forces[:, 5] + forces[:, 4] - forces[:, 3]) / 1000.0
+    M_front_X = (g1 * (f_avant_droite - f_avant_gauche)) / 1000.0
+    M_front_Y = h1 * (f_avant_droite + f_avant_gauche - f_avant_centre) / 1000.0
 
     # Moments pour la partie arrière
-    M_back_X = (g2 * (forces[:, 1] - forces[:, 0])) / 1000.0
-    M_back_Y = h2 * (forces[:, 1] + forces[:, 0] - forces[:, 2]) / 1000.0
+    M_back_X = (g2 * (f_arriere_droite - f_arriere_gauche)) / 1000.0
+    M_back_Y = h2 * (-f_arriere_droite - f_arriere_gauche + f_arriere_centre) / 1000.0
 
     # Calcul des positions de réaction (si la force est supérieure à un seuil)
     threshold = 100  # seuil en N
@@ -153,8 +181,6 @@ def process_loadcells(input_csv, output_csv):
 
 # Exemple d'utilisation
 if __name__ == "__main__":
-    input_csv_file = "imu_log_0042.csv"  # CSV issu de binary_to_csv
-    output_csv_file = (
-        "donnees_moments_forces.csv"  # CSV de sortie avec moments et forces
-    )
+    input_csv_file = "sample_test.csv"  # CSV issu de binary_to_csv
+    output_csv_file = "test_forces.csv"  # CSV de sortie avec moments et forces
     process_loadcells(input_csv_file, output_csv_file)

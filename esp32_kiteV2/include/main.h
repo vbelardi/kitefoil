@@ -72,11 +72,11 @@ HardwareSerial GPS_Serial(2);
 // Définir les broches pour chaque HX711
 const int32_t CALIBRATION = 13;
 
-// Arrière droit
+// Arrière gauche
 const uint8_t DATA_PIN1 = 25;
 const uint8_t CLOCK_PIN1 = 26;
 
-// Arrière gauche, n°4 on schematics
+// Arrière droite, n°4 on schematics
 const uint8_t DATA_PIN2 = 13;
 const uint8_t CLOCK_PIN2 = 12;
 
@@ -84,15 +84,15 @@ const uint8_t CLOCK_PIN2 = 12;
 const uint8_t DATA_PIN3 = 27;
 const uint8_t CLOCK_PIN3 = 14;
 
-//Avant Centre, n°2 on schematics
+//Avant gauche, n°2 on schematics
 const uint8_t DATA_PIN4 = 36;
 const uint8_t CLOCK_PIN4 = 15;
 
-//Avant Droit
+//Avant centre
 const uint8_t DATA_PIN5 = 4;
 const uint8_t CLOCK_PIN5 = 0;
 
-//Avant Gauche
+//Avant droite
 const uint8_t DATA_PIN6 = 32;
 const uint8_t CLOCK_PIN6 = 2;
 
